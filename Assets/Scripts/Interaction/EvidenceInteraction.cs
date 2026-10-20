@@ -66,7 +66,7 @@ public class EvidenceInteraction : MonoBehaviour
         {
             if (!missingReferenceLogged)
             {
-                Debug.LogError("Forensic: EvidenceInteraction needs a mouse and keyboard from the Input System package. Selection is disabled.");
+                Debug.Log("Forensic: EvidenceInteraction desktop mouse/keyboard not detected. Desktop input disabled; VR input active.");
                 missingReferenceLogged = true;
             }
             return;
