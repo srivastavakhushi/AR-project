@@ -141,8 +141,8 @@ public class ForensicInvestigationEditModeTests
     [Test]
     public void MissingCamera_IsReported()
     {
-        var cameras = Object.FindObjectsByType<Camera>(FindObjectsInactive.Include);
-        var managers = Object.FindObjectsByType<CrimeSceneEvidenceManager>(FindObjectsInactive.Include);
+        var cameras = Object.FindObjectsByType<Camera>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        var managers = Object.FindObjectsByType<CrimeSceneEvidenceManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         var cameraStates = new bool[cameras.Length];
         var managerStates = new bool[managers.Length];
         for (int i = 0; i < cameras.Length; i++)

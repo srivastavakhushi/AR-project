@@ -40,10 +40,13 @@ namespace CrimeSceneVR.Editor
             int passedTests = 0;
             int failedTests = 0;
 
-            // 1. Person 2 Tests
+            // 1. Person 1 Tests
+            RunFixture<VRRigTests>("Person 1: VR Rig, Camera NearClip & Locomotion/Teleport", ref totalTests, ref passedTests, ref failedTests, sb);
+
+            // 2. Person 2 Tests
             RunFixture<Person2VRInteractionTests>("Person 2: VR Controller Evidence Interaction", ref totalTests, ref passedTests, ref failedTests, sb);
 
-            // 2. Person 3 Tests
+            // 3. Person 3 Tests
             RunFixture<Person3ResearchTests>("Person 3: Telemetry, Kendall's Tau & Research Analytics", ref totalTests, ref passedTests, ref failedTests, sb);
 
             sb.AppendLine("--------------------------------------------------------------------------------");

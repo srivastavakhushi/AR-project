@@ -8,7 +8,7 @@ using CrimeSceneVR.Telemetry;
 namespace CrimeSceneVR.Analytics
 {
     /// <summary>
-    /// Aggregated research analytics and spatial error metrics for a completed session.
+    /// Aggregated research analytics, trajectory distance, and spatial error metrics for a completed session.
     /// </summary>
     [Serializable]
     public class SessionResearchSummary
@@ -24,25 +24,33 @@ namespace CrimeSceneVR.Analytics
         public int TotalRegisteredEvidence { get; set; }
         public int EvidenceDiscoveredCount { get; set; }
         public int EvidenceTaggedCount { get; set; }
+        public int MissedEvidenceCount => Math.Max(0, TotalRegisteredEvidence - EvidenceTaggedCount);
         public double CompletionPercent => TotalRegisteredEvidence > 0 ? (double)EvidenceTaggedCount / TotalRegisteredEvidence * 100.0 : 0.0;
+        public double EvidenceRecallPercent => CompletionPercent;
 
         public double? TimeToFirstDiscoverySeconds { get; set; }
         public double? AverageDiscoveryIntervalSeconds { get; set; }
 
         public double? MeanSpatialErrorMeters { get; set; }
+        public double? MedianSpatialErrorMeters { get; set; }
         public double? MinSpatialErrorMeters { get; set; }
         public double? MaxSpatialErrorMeters { get; set; }
 
         public int SpatialWithinToleranceCount { get; set; }
         public double SpatialWithinTolerancePercent => EvidenceTaggedCount > 0 ? (double)SpatialWithinToleranceCount / EvidenceTaggedCount * 100.0 : 0.0;
 
+        public double TotalMovementDistanceMeters { get; set; }
+
         public double KendallTauScore { get; set; }
         public double NormalizedSequencingScore { get; set; }
+        public int ConcordantPairs { get; set; }
+        public int DiscordantPairs { get; set; }
+        public string TaggedTimelineSequence { get; set; } = string.Empty;
         public string SequencingInterpretation { get; set; }
     }
 
     /// <summary>
-    /// Aggregates spatial accuracy, temporal milestones, and sequencing metrics from session telemetry.
+    /// Aggregates spatial accuracy, temporal milestones, trajectory path length, and Kendall's Tau-b sequencing metrics.
     /// </summary>
     public static class ResearchMetrics
     {
@@ -70,6 +78,10 @@ namespace CrimeSceneVR.Analytics
             var spatialErrors = new List<float>();
             var seenDiscovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var seenTagged = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var taggedOrder = new List<string>();
+
+            double totalDistance = 0.0;
+            Vector3? prevPose = null;
 
             if (records != null)
             {
@@ -77,7 +89,22 @@ namespace CrimeSceneVR.Analytics
                 {
                     if (rec == null) continue;
 
-                    if (rec.EventType == TelemetryEventType.EvidenceDiscovered && !string.IsNullOrWhiteSpace(rec.EvidenceId))
+                    if (rec.EventType == TelemetryEventType.PeriodicSample)
+                    {
+                        Vector3 currentPose = rec.HeadPosition;
+                        if (prevPose.HasValue)
+                        {
+                            float step = Vector2.Distance(
+                                new Vector2(currentPose.x, currentPose.z),
+                                new Vector2(prevPose.Value.x, prevPose.Value.z));
+                            if (step > 0.003f && step < 10f)
+                            {
+                                totalDistance += step;
+                            }
+                        }
+                        prevPose = currentPose;
+                    }
+                    else if (rec.EventType == TelemetryEventType.EvidenceDiscovered && !string.IsNullOrWhiteSpace(rec.EvidenceId))
                     {
                         if (seenDiscovered.Add(rec.EvidenceId))
                         {
@@ -86,7 +113,10 @@ namespace CrimeSceneVR.Analytics
                     }
                     else if (rec.EventType == TelemetryEventType.EvidenceTagged && !string.IsNullOrWhiteSpace(rec.EvidenceId))
                     {
-                        seenTagged.Add(rec.EvidenceId);
+                        if (seenTagged.Add(rec.EvidenceId))
+                        {
+                            taggedOrder.Add(rec.EvidenceId);
+                        }
                         if (rec.SpatialError.HasValue)
                         {
                             spatialErrors.Add(rec.SpatialError.Value);
@@ -97,6 +127,8 @@ namespace CrimeSceneVR.Analytics
 
             summary.EvidenceDiscoveredCount = seenDiscovered.Count;
             summary.EvidenceTaggedCount = seenTagged.Count;
+            summary.TotalMovementDistanceMeters = totalDistance;
+            summary.TaggedTimelineSequence = string.Join("->", taggedOrder);
 
             // Discovery timings
             if (discTimes.Count > 0)
@@ -115,12 +147,24 @@ namespace CrimeSceneVR.Analytics
                 }
             }
 
-            // Spatial errors
+            // Spatial errors (Mean, Median, Min, Max, <= 5 cm tolerance)
             if (spatialErrors.Count > 0)
             {
+                spatialErrors.Sort();
                 summary.MeanSpatialErrorMeters = spatialErrors.Average();
-                summary.MinSpatialErrorMeters = spatialErrors.Min();
-                summary.MaxSpatialErrorMeters = spatialErrors.Max();
+                summary.MinSpatialErrorMeters = spatialErrors[0];
+                summary.MaxSpatialErrorMeters = spatialErrors[spatialErrors.Count - 1];
+
+                int count = spatialErrors.Count;
+                if (count % 2 == 1)
+                {
+                    summary.MedianSpatialErrorMeters = spatialErrors[count / 2];
+                }
+                else
+                {
+                    summary.MedianSpatialErrorMeters = (spatialErrors[(count / 2) - 1] + spatialErrors[count / 2]) * 0.5;
+                }
+
                 summary.SpatialWithinToleranceCount = spatialErrors.Count(e => e <= SpatialToleranceThresholdMeters);
             }
 
@@ -129,12 +173,16 @@ namespace CrimeSceneVR.Analytics
             {
                 summary.KendallTauScore = timelineResult.KendallTauScore;
                 summary.NormalizedSequencingScore = timelineResult.KendallResult.NormalizedScore;
+                summary.ConcordantPairs = timelineResult.KendallResult.ConcordantPairs;
+                summary.DiscordantPairs = timelineResult.KendallResult.DiscordantPairs;
                 summary.SequencingInterpretation = timelineResult.KendallResult.Interpretation;
             }
             else
             {
                 summary.KendallTauScore = 0.0;
                 summary.NormalizedSequencingScore = 0.5;
+                summary.ConcordantPairs = 0;
+                summary.DiscordantPairs = 0;
                 summary.SequencingInterpretation = "Timeline not evaluated.";
             }
 

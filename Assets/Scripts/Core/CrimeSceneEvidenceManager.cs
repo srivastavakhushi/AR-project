@@ -136,7 +136,7 @@ public class CrimeSceneEvidenceManager : MonoBehaviour
     public void RegisterAllInScene()
     {
         RefreshInvestigationFloorBounds();
-        var found = FindObjectsByType<EvidenceObject>(FindObjectsInactive.Exclude);
+        var found = FindObjectsByType<EvidenceObject>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
         System.Array.Sort(found, (a, b) => string.CompareOrdinal(a.EvidenceId, b.EvidenceId));
         for (int i = 0; i < found.Length; i++)
             RegisterEvidence(found[i]);
@@ -265,14 +265,12 @@ public class CrimeSceneEvidenceManager : MonoBehaviour
 
         if (!sessionStarted || sessionCompleted)
         {
-            Debug.LogWarning("Forensic: evidence cannot be tagged because the session is not active.");
-            return false;
+            StartSession();
         }
 
         if (!evidence.IsDiscovered)
         {
-            Debug.LogWarning("Forensic: inspect " + evidence.EvidenceId + " before tagging it.");
-            return false;
+            TryInspect(evidence);
         }
 
         Vector3 groundTruth = evidence.GroundTruthWorldPosition;
@@ -296,7 +294,7 @@ public class CrimeSceneEvidenceManager : MonoBehaviour
 
     public void StartSession()
     {
-        if (sessionStarted)
+        if (sessionStarted && !sessionCompleted)
             return;
 
         ResolveLogger();
@@ -349,8 +347,7 @@ public class CrimeSceneEvidenceManager : MonoBehaviour
     {
         if (!sessionStarted || sessionCompleted)
         {
-            Debug.LogWarning("Forensic: evidence cannot be " + action + " because the session is not active.");
-            return false;
+            StartSession();
         }
 
         if (!IsRegistered(evidence))

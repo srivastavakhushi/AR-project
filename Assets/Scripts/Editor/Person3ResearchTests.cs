@@ -171,7 +171,7 @@ namespace CrimeSceneVR.Tests
             tm.SetGroundTruthSequence(new[] { "EV-001", "EV-002", "EV-003", "EV-004" });
 
             // Submission has duplicate EV-001, omits EV-004, adds unexpected EV-099
-            var sub = new List<string> { "EV-001", "EV-001", "EV-003", "EV-099" };
+            var sub = new List<string> { "EV-001", "EV-001", "EV-099", "EV-003" };
             var result = tm.SubmitTimeline(sub);
 
             Assert.IsFalse(result.IsComplete);

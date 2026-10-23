@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 using CrimeSceneVR.Core;
+using CrimeSceneVR.VR;
 
 namespace CrimeSceneVR.Editor
 {
@@ -59,7 +60,7 @@ namespace CrimeSceneVR.Editor
             }
 
             // Clean up any duplicate rigs if multiple exist
-            var allRigRefs = UnityEngine.Object.FindObjectsByType<VRRigReferences>();
+            var allRigRefs = UnityEngine.Object.FindObjectsByType<VRRigReferences>(FindObjectsSortMode.None);
             if (allRigRefs.Length > 1)
             {
                 for (int i = 1; i < allRigRefs.Length; i++)
@@ -68,18 +69,28 @@ namespace CrimeSceneVR.Editor
                 }
                 EditorSceneManager.MarkSceneDirty(activeScene);
                 EditorSceneManager.SaveOpenScenes();
-                allRigRefs = UnityEngine.Object.FindObjectsByType<VRRigReferences>();
+                allRigRefs = UnityEngine.Object.FindObjectsByType<VRRigReferences>(FindObjectsSortMode.None);
             }
 
             // Check if VR Rig is already set up and configured
             var existingRigRef = (allRigRefs.Length > 0) ? allRigRefs[0] : null;
             if (existingRigRef != null && !force)
             {
+                bool modified = false;
+
                 // Ensure near clip plane is 0.05m
                 if (existingRigRef.MainCamera != null && existingRigRef.MainCamera.nearClipPlane > 0.05f)
                 {
                     existingRigRef.MainCamera.nearClipPlane = 0.05f;
                     EditorUtility.SetDirty(existingRigRef.MainCamera);
+                    modified = true;
+                }
+
+                // Ensure CharacterController & VRLocomotionController on rig root
+                var evMgr = UnityEngine.Object.FindAnyObjectByType<CrimeSceneEvidenceManager>();
+                if (EnsureLocomotionComponents(existingRigRef.gameObject, existingRigRef, evMgr))
+                {
+                    modified = true;
                 }
 
                 // Ensure VREvidenceInteraction is configured on RightHandAnchor
@@ -89,12 +100,16 @@ namespace CrimeSceneVR.Editor
                     if (vrInt == null)
                     {
                         vrInt = existingRigRef.RightHandAnchor.gameObject.AddComponent<CrimeSceneVR.Interaction.VREvidenceInteraction>();
-                        var evMgr = UnityEngine.Object.FindAnyObjectByType<CrimeSceneEvidenceManager>();
                         vrInt.Configure(evMgr, existingRigRef.RightHandAnchor);
                         EditorUtility.SetDirty(existingRigRef.RightHandAnchor.gameObject);
-                        EditorSceneManager.MarkSceneDirty(activeScene);
-                        EditorSceneManager.SaveOpenScenes();
+                        modified = true;
                     }
+                }
+
+                if (modified)
+                {
+                    EditorSceneManager.MarkSceneDirty(activeScene);
+                    EditorSceneManager.SaveOpenScenes();
                 }
 
                 // Ensure Research Systems (SessionManager, Telemetry, Timeline, Exporter) exist
@@ -120,42 +135,45 @@ namespace CrimeSceneVR.Editor
             GameObject oldCameraGo = (oldCamera != null && existingRigRef == null) ? oldCamera.gameObject : null;
 
             // 3. Instantiate or locate OVRCameraRig
-            GameObject rigGo = null;
-            var ovrPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(OvrRigPrefabPath);
-            if (ovrPrefab != null)
+            GameObject rigGo = existingRigRef != null ? existingRigRef.gameObject : null;
+            if (rigGo == null)
             {
-                rigGo = (GameObject)PrefabUtility.InstantiatePrefab(ovrPrefab, activeScene);
-                rigGo.name = "OVRCameraRig";
-            }
-            else
-            {
-                // Fallback: Build procedural standard OpenXR/Meta VR rig hierarchy
-                rigGo = new GameObject("OVRCameraRig");
-                rigGo.AddComponent<OVRCameraRig>();
-                var ovrMgr = rigGo.AddComponent<OVRManager>();
-                ovrMgr.trackingOriginType = OVRManager.TrackingOrigin.FloorLevel;
-                rigGo.AddComponent<OVRHeadsetEmulator>();
+                var ovrPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(OvrRigPrefabPath);
+                if (ovrPrefab != null)
+                {
+                    rigGo = (GameObject)PrefabUtility.InstantiatePrefab(ovrPrefab, activeScene);
+                    rigGo.name = "OVRCameraRig";
+                }
+                else
+                {
+                    // Fallback: Build procedural standard OpenXR/Meta VR rig hierarchy
+                    rigGo = new GameObject("OVRCameraRig");
+                    rigGo.AddComponent<OVRCameraRig>();
+                    var ovrMgr = rigGo.AddComponent<OVRManager>();
+                    ovrMgr.trackingOriginType = OVRManager.TrackingOrigin.FloorLevel;
+                    rigGo.AddComponent<OVRHeadsetEmulator>();
 
-                var trackingSpaceGo = new GameObject("TrackingSpace");
-                trackingSpaceGo.transform.SetParent(rigGo.transform, false);
+                    var trackingSpaceGo = new GameObject("TrackingSpace");
+                    trackingSpaceGo.transform.SetParent(rigGo.transform, false);
 
-                var centerEyeGo = new GameObject("CenterEyeAnchor");
-                centerEyeGo.transform.SetParent(trackingSpaceGo.transform, false);
-                centerEyeGo.tag = "MainCamera";
-                var cam = centerEyeGo.AddComponent<Camera>();
-                cam.nearClipPlane = 0.05f;
-                cam.farClipPlane = 1000f;
-                centerEyeGo.AddComponent<AudioListener>();
+                    var centerEyeGo = new GameObject("CenterEyeAnchor");
+                    centerEyeGo.transform.SetParent(trackingSpaceGo.transform, false);
+                    centerEyeGo.tag = "MainCamera";
+                    var cam = centerEyeGo.AddComponent<Camera>();
+                    cam.nearClipPlane = 0.05f;
+                    cam.farClipPlane = 1000f;
+                    centerEyeGo.AddComponent<AudioListener>();
 
-                var leftHandGo = new GameObject("LeftHandAnchor");
-                leftHandGo.transform.SetParent(trackingSpaceGo.transform, false);
-                var leftCtrlGo = new GameObject("LeftControllerAnchor");
-                leftCtrlGo.transform.SetParent(leftHandGo.transform, false);
+                    var leftHandGo = new GameObject("LeftHandAnchor");
+                    leftHandGo.transform.SetParent(trackingSpaceGo.transform, false);
+                    var leftCtrlGo = new GameObject("LeftControllerAnchor");
+                    leftCtrlGo.transform.SetParent(leftHandGo.transform, false);
 
-                var rightHandGo = new GameObject("RightHandAnchor");
-                rightHandGo.transform.SetParent(trackingSpaceGo.transform, false);
-                var rightCtrlGo = new GameObject("RightControllerAnchor");
-                rightCtrlGo.transform.SetParent(rightHandGo.transform, false);
+                    var rightHandGo = new GameObject("RightHandAnchor");
+                    rightHandGo.transform.SetParent(trackingSpaceGo.transform, false);
+                    var rightCtrlGo = new GameObject("RightControllerAnchor");
+                    rightCtrlGo.transform.SetParent(rightHandGo.transform, false);
+                }
             }
 
             rigGo.transform.position = spawnPosition;
@@ -171,12 +189,13 @@ namespace CrimeSceneVR.Editor
             manager.usePositionTracking = true;
             manager.useRotationTracking = true;
 
-            // 5. Ensure VRRigReferences component is attached
+            // 5. Ensure VRRigReferences, CharacterController & VRLocomotionController components are attached
             var rigRef = rigGo.GetComponent<VRRigReferences>();
             if (rigRef == null)
             {
                 rigRef = rigGo.AddComponent<VRRigReferences>();
             }
+            EnsureLocomotionComponents(rigGo, rigRef, evidenceManager);
             rigRef.ResolveReferences();
 
             // 6. Configure CenterEyeAnchor Camera
@@ -253,8 +272,41 @@ namespace CrimeSceneVR.Editor
             EditorSceneManager.MarkSceneDirty(activeScene);
             EditorSceneManager.SaveOpenScenes();
 
-            Debug.Log($"[VRRigSetup] Successfully configured Meta XR VR Rig at {spawnPosition} in {CrimeScenePath} with nearClipPlane=0.05m.");
+            Debug.Log($"[VRRigSetup] Successfully configured Meta XR VR Rig at {spawnPosition} in {CrimeScenePath} with nearClipPlane=0.05m and VRLocomotionController.");
             return true;
+        }
+
+        private static bool EnsureLocomotionComponents(GameObject rigGo, VRRigReferences rigRef, CrimeSceneEvidenceManager evidenceManager)
+        {
+            bool changed = false;
+
+            var cc = rigGo.GetComponent<CharacterController>();
+            if (cc == null)
+            {
+                cc = rigGo.AddComponent<CharacterController>();
+                cc.height = 1.7f;
+                cc.radius = 0.25f;
+                cc.center = new Vector3(0f, 0.85f, 0f);
+                cc.skinWidth = 0.02f;
+                cc.stepOffset = 0.25f;
+                changed = true;
+            }
+
+            var loco = rigGo.GetComponent<VRLocomotionController>();
+            if (loco == null)
+            {
+                loco = rigGo.AddComponent<VRLocomotionController>();
+                changed = true;
+            }
+            loco.Configure(rigRef, evidenceManager);
+            rigRef.ResolveReferences();
+
+            if (changed)
+            {
+                EditorUtility.SetDirty(rigGo);
+            }
+
+            return changed;
         }
 
         private static void EnsureResearchManagers(Scene activeScene)

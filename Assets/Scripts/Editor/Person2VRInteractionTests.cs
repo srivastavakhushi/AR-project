@@ -26,14 +26,14 @@ namespace CrimeSceneVR.Tests
             var ev1Go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             ev1Go.name = "EV-001 Ballistic casing";
             ev1Go.transform.SetParent(_rootGo.transform);
-            ev1Go.transform.position = new Vector3(0f, 0f, 2f);
+            ev1Go.transform.position = new Vector3(0f, 500f, 2f);
             _evidence1 = ev1Go.AddComponent<EvidenceObject>();
             _evidence1.Configure("EV-001", "Ballistic casing", "Test casing", EvidenceCategory.Ballistic);
 
             var ev2Go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             ev2Go.name = "EV-002 Weapon";
             ev2Go.transform.SetParent(_rootGo.transform);
-            ev2Go.transform.position = new Vector3(2f, 0f, 2f);
+            ev2Go.transform.position = new Vector3(2f, 500f, 2f);
             _evidence2 = ev2Go.AddComponent<EvidenceObject>();
             _evidence2.Configure("EV-002", "Weapon", "Test weapon", EvidenceCategory.Weapon);
 
@@ -63,7 +63,7 @@ namespace CrimeSceneVR.Tests
         public void VREvidenceInteraction_Raycast_DetectsEvidenceObject()
         {
             // Position pointer directly facing evidence 1
-            _rigGo.transform.position = new Vector3(0f, 0f, 0f);
+            _rigGo.transform.position = new Vector3(0f, 500f, 0f);
             _rigGo.transform.rotation = Quaternion.LookRotation(Vector3.forward);
 
             bool hasHit = _vrInteraction.ProcessRaycast(out RaycastHit hit, out EvidenceObject evidence);

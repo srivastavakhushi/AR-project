@@ -145,7 +145,7 @@ public class EvidenceObject : MonoBehaviour
 
     void WarnIfDuplicateId()
     {
-        var others = FindObjectsByType<EvidenceObject>(FindObjectsInactive.Include);
+        var others = FindObjectsByType<EvidenceObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         for (int i = 0; i < others.Length; i++)
         {
             EvidenceObject other = others[i];

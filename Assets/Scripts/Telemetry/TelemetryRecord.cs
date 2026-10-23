@@ -11,6 +11,9 @@ namespace CrimeSceneVR.Telemetry
         EvidenceDiscovered,
         EvidenceInspected,
         EvidenceTagged,
+        EvidenceMissed,
+        TimelineEventSelected,
+        TimelineSubmitted,
         CustomEvent
     }
 

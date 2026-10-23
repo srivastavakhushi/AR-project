@@ -1,9 +1,11 @@
 using UnityEngine;
+using CrimeSceneVR.VR;
 
 namespace CrimeSceneVR.Core
 {
     /// <summary>
     /// Central access point exposing VR Rig anchors and components for:
+    /// - Person 1: VR Locomotion, turning, teleportation, and collision capsule.
     /// - Person 2: Evidence grab, inspection, interaction tools (hands, controllers, eye ray).
     /// - Person 3: Player position/rotation telemetry and tracking loggers.
     /// </summary>
@@ -50,8 +52,9 @@ namespace CrimeSceneVR.Core
         [SerializeField] private Camera _mainCamera;
         [SerializeField] private CharacterController _characterController;
         [SerializeField] private OVRCameraRig _ovrCameraRig;
+        [SerializeField] private VRLocomotionController _locomotionController;
 
-        #region Public Properties for Person 2 & Person 3
+        #region Public Properties for Person 1, Person 2 & Person 3
         public Transform Root => _rigTransform != null ? _rigTransform : transform;
         public Transform RigTransform => Root;
         public Transform TrackingSpace => _trackingSpace;
@@ -64,6 +67,7 @@ namespace CrimeSceneVR.Core
         public Camera MainCamera => _mainCamera != null ? _mainCamera : ResolveMainCamera();
         public CharacterController CharacterController => _characterController;
         public OVRCameraRig OVRCameraRig => _ovrCameraRig;
+        public VRLocomotionController LocomotionController => _locomotionController;
 
         // Convenient Telemetry & Interaction Accessors
         public Vector3 HeadPosition => _centerEyeAnchor != null ? _centerEyeAnchor.position : transform.position;
@@ -126,6 +130,7 @@ namespace CrimeSceneVR.Core
             if (_rigTransform == null) _rigTransform = transform;
             if (_ovrCameraRig == null) _ovrCameraRig = GetComponent<OVRCameraRig>();
             if (_characterController == null) _characterController = GetComponent<CharacterController>();
+            if (_locomotionController == null) _locomotionController = GetComponent<VRLocomotionController>();
 
             if (_ovrCameraRig != null)
             {

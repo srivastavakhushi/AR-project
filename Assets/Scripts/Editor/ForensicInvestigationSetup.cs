@@ -246,7 +246,7 @@ public static class ForensicInvestigationSetup
 
     static Transform FindLowestFurnishedFloor()
     {
-        var transforms = Object.FindObjectsByType<Transform>();
+        var transforms = Object.FindObjectsByType<Transform>(FindObjectsSortMode.None);
         var candidates = new List<Transform>();
         var boundsByCandidate = new List<Bounds>();
         float lowest = float.PositiveInfinity;
@@ -304,7 +304,7 @@ public static class ForensicInvestigationSetup
         EvidenceInteraction interaction = Object.FindAnyObjectByType<EvidenceInteraction>();
         EvidenceUI ui = Object.FindAnyObjectByType<EvidenceUI>();
         InvestigationEventLogger logger = Object.FindAnyObjectByType<InvestigationEventLogger>();
-        var evidence = Object.FindObjectsByType<EvidenceObject>(FindObjectsInactive.Include);
+        var evidence = Object.FindObjectsByType<EvidenceObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
 
         builder.AppendLine("Investigation validation");
         valid &= Report(builder, manager != null, "Evidence manager is present.");

@@ -2,6 +2,7 @@ using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using CrimeSceneVR.Core;
+using CrimeSceneVR.Session;
 
 namespace CrimeSceneVR.Interaction
 {
@@ -40,7 +41,7 @@ namespace CrimeSceneVR.Interaction
         private EvidenceObject _hoveredEvidence;
         private EvidenceObject _selectedEvidence;
         private bool _isVrActive;
-        private readonly MaterialPropertyBlock _propertyBlock = new MaterialPropertyBlock();
+        private MaterialPropertyBlock _propertyBlock;
 
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
@@ -115,6 +116,9 @@ namespace CrimeSceneVR.Interaction
             if (origin == null)
                 return false;
 
+            if (!Application.isPlaying)
+                Physics.SyncTransforms();
+
             Ray ray = new Ray(origin.position, origin.forward);
             bool hasHit = Physics.Raycast(ray, out hit, _maxRayDistance, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
 
@@ -182,6 +186,10 @@ namespace CrimeSceneVR.Interaction
                     // If evidence is selected and user aims at floor or adjacent spot, place tag at hit point
                     TagEvidence(_selectedEvidence, hit.point);
                 }
+                else if (_selectedEvidence != null)
+                {
+                    TagEvidence(_selectedEvidence, _selectedEvidence.transform.position);
+                }
             }
         }
 
@@ -192,6 +200,12 @@ namespace CrimeSceneVR.Interaction
         {
             if (evidence == null || _evidenceManager == null)
                 return false;
+
+            if (!_evidenceManager.IsSessionStarted || _evidenceManager.IsSessionCompleted)
+            {
+                _evidenceManager.StartSession();
+                SessionManager.Instance?.StartSession();
+            }
 
             // Highlight as selected
             if (_selectedEvidence != evidence)
@@ -232,6 +246,13 @@ namespace CrimeSceneVR.Interaction
             {
                 Debug.LogWarning($"[VREvidenceInteraction] '{evidence.EvidenceId}' is already tagged. Duplicate tag prevented.");
                 return false;
+            }
+
+            // Ensure session is started/active
+            if (!_evidenceManager.IsSessionStarted || _evidenceManager.IsSessionCompleted)
+            {
+                _evidenceManager.StartSession();
+                SessionManager.Instance?.StartSession();
             }
 
             // Evidence must be discovered/inspected before tagging
@@ -382,6 +403,7 @@ namespace CrimeSceneVR.Interaction
             for (int i = 0; i < renderers.Length; i++)
             {
                 Renderer r = renderers[i];
+                _propertyBlock ??= new MaterialPropertyBlock();
                 r.GetPropertyBlock(_propertyBlock);
                 if (r.sharedMaterial != null && r.sharedMaterial.HasProperty(BaseColorId))
                 {

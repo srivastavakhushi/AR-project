@@ -11,6 +11,7 @@ namespace CrimeSceneVR.Session
     /// Integrates with CrimeSceneEvidenceManager and triggers telemetry and CSV export pipelines.
     /// </summary>
     [DisallowMultipleComponent]
+    [DefaultExecutionOrder(-60)]
     [AddComponentMenu("Crime Scene VR/Session/Session Manager")]
     public class SessionManager : MonoBehaviour
     {
@@ -47,6 +48,7 @@ namespace CrimeSceneVR.Session
 
         private float _sessionStartTime = 0f;
         private CrimeSceneEvidenceManager _evidenceManager;
+        private bool _endingSession;
 
         public SessionData CurrentSession => _currentSession;
         public bool IsSessionActive => _currentSession != null && _currentSession.Status == SessionStatus.InProgress;
@@ -81,21 +83,33 @@ namespace CrimeSceneVR.Session
 
         private void Update()
         {
-            if (!Application.isPlaying || !_enableHotkeys) return;
+            if (!Application.isPlaying) return;
+
+            // VR Controller X or Y button to finish & submit session from inside headset
+            // Only allow manual completion if at least 1 evidence has been tagged (prevents accidental session end on keyboard WASD/X)
+            try
+            {
+                if (IsSessionActive && (_evidenceManager == null || _evidenceManager.TaggedCount > 0) &&
+                    (OVRInput.GetDown(OVRInput.RawButton.X) || OVRInput.GetDown(OVRInput.RawButton.Y)))
+                {
+                    EndSession();
+                    return;
+                }
+            }
+            catch
+            {
+                // Ignore when OVR runtime is inactive
+            }
+
+            if (!_enableHotkeys) return;
 
             var keyboard = Keyboard.current;
             if (keyboard != null)
             {
-                if (keyboard.f1Key.wasPressedThisFrame)
+                // 'R' or 'F1' key restarts a fresh session at any time
+                if (keyboard.rKey.wasPressedThisFrame || keyboard.f1Key.wasPressedThisFrame)
                 {
-                    if (!IsSessionActive)
-                    {
-                        StartSession(_defaultParticipantId, _defaultCondition);
-                    }
-                    else
-                    {
-                        Debug.Log($"[SessionManager] Session is already active: {_currentSession.SessionId}");
-                    }
+                    StartSession(_defaultParticipantId, _defaultCondition);
                 }
                 else if (keyboard.f2Key.wasPressedThisFrame)
                 {
@@ -142,7 +156,7 @@ namespace CrimeSceneVR.Session
 
         private void HandleEvidenceSessionCompleted()
         {
-            if (IsSessionActive)
+            if (IsSessionActive && !_endingSession)
             {
                 Debug.Log("[SessionManager] Evidence manager reported session completion. Finalizing research session.");
                 EndSession();
@@ -166,6 +180,11 @@ namespace CrimeSceneVR.Session
             _currentSession = new SessionData(pId, cond);
             _sessionStartTime = Time.unscaledTime;
 
+            if (_evidenceManager != null && (!_evidenceManager.IsSessionStarted || _evidenceManager.IsSessionCompleted))
+            {
+                _evidenceManager.StartSession();
+            }
+
             Debug.Log($"[SessionManager] Research session started: ID={_currentSession.SessionId}, Participant={_currentSession.ParticipantId}, Condition={_currentSession.Condition}");
 
             OnSessionStarted?.Invoke(_currentSession);
@@ -173,7 +192,7 @@ namespace CrimeSceneVR.Session
         }
 
         /// <summary>
-        /// Ends the current active research session and calculates duration.
+        /// Ends the current active research session, syncs CrimeSceneEvidenceManager, and calculates duration.
         /// </summary>
         public SessionData EndSession()
         {
@@ -183,13 +202,28 @@ namespace CrimeSceneVR.Session
                 return _currentSession;
             }
 
-            float duration = ElapsedSessionTime;
-            _currentSession.MarkComplete(duration);
+            if (_endingSession)
+                return _currentSession;
 
-            Debug.Log($"[SessionManager] Research session ended: ID={_currentSession.SessionId}, Duration={duration:F2}s");
+            _endingSession = true;
+            try
+            {
+                float duration = ElapsedSessionTime;
+                _currentSession.MarkComplete(duration);
 
-            OnSessionEnded?.Invoke(_currentSession);
-            return _currentSession;
+                if (_evidenceManager != null && _evidenceManager.IsSessionStarted && !_evidenceManager.IsSessionCompleted)
+                {
+                    _evidenceManager.CompleteSession();
+                }
+
+                Debug.Log($"[SessionManager] Research session ended: ID={_currentSession.SessionId}, Duration={duration:F2}s");
+                OnSessionEnded?.Invoke(_currentSession);
+                return _currentSession;
+            }
+            finally
+            {
+                _endingSession = false;
+            }
         }
     }
 }

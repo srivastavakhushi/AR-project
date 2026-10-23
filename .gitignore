@@ -34,7 +34,9 @@
 Thumbs.db
 Desktop.ini
 
-# Crash and local reports
+# Local test outputs and IDE
+test_results.txt
+.vscode/
 sysinfo.txt
 *.stackdump
 crashlytics-buildid.txt

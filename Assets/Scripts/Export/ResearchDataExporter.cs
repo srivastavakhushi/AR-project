@@ -18,6 +18,20 @@ namespace CrimeSceneVR.Export
     [AddComponentMenu("Crime Scene VR/Export/Research Data Exporter")]
     public class ResearchDataExporter : MonoBehaviour
     {
+        private static ResearchDataExporter _instance;
+        public static ResearchDataExporter Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    _instance = FindAnyObjectByType<ResearchDataExporter>();
+                }
+                return _instance;
+            }
+            private set => _instance = value;
+        }
+
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
         public const string TRACKING_HEADER =
@@ -33,8 +47,9 @@ namespace CrimeSceneVR.Export
             "SessionId,ParticipantId,Condition,Status,StartTimeUtc,EndTimeUtc,DurationSeconds," +
             "TotalRegisteredEvidence,DiscoveredCount,TaggedCount,CompletionPercent," +
             "TimeToFirstDiscoverySeconds,AverageDiscoveryIntervalSeconds," +
-            "MeanSpatialErrorMeters,SpatialWithinToleranceCount,SpatialWithinTolerancePercent," +
-            "KendallTauScore,NormalizedSequencingScore,Interpretation";
+            "MeanSpatialErrorMeters,MedianSpatialErrorMeters,MinSpatialErrorMeters,MaxSpatialErrorMeters," +
+            "SpatialWithinToleranceCount,SpatialWithinTolerancePercent,TotalMovementDistanceMeters," +
+            "KendallTauScore,NormalizedSequencingScore,ConcordantPairs,DiscordantPairs,TaggedSequence,Interpretation";
 
         [Header("Export Settings")]
         [Tooltip("Subdirectory under Application.persistentDataPath for research outputs.")]
@@ -44,8 +59,33 @@ namespace CrimeSceneVR.Export
         [SerializeField] private bool _autoExportOnSessionEnd = true;
 
         public string OutputDirectory => Path.Combine(Application.persistentDataPath, _subDirectory);
+        public SessionResearchSummary LastExportedSummary { get; private set; }
+        public string LastTrackingCsvPath { get; private set; }
+        public string LastSummaryCsvPath { get; private set; }
+
+        public event Action<SessionResearchSummary, string, string> OnDatasetsExported;
+
+        private void Awake()
+        {
+            if (_instance == null || _instance == this)
+            {
+                _instance = this;
+            }
+        }
 
         private void OnEnable()
+        {
+            if (_instance == null)
+                _instance = this;
+
+            if (SessionManager.Instance != null)
+            {
+                SessionManager.Instance.OnSessionEnded -= HandleSessionEnded;
+                SessionManager.Instance.OnSessionEnded += HandleSessionEnded;
+            }
+        }
+
+        private void Start()
         {
             if (SessionManager.Instance != null)
             {
@@ -70,12 +110,20 @@ namespace CrimeSceneVR.Export
             {
                 var records = TelemetryCollector.Instance != null ? TelemetryCollector.Instance.Records : null;
                 var timelineResult = TimelineManager.Instance != null ? TimelineManager.Instance.EvaluateCurrentTaggedSequence() : null;
-                var summary = ResearchMetrics.ComputeSummary(session, records, timelineResult);
+                var evMgr = FindAnyObjectByType<CrimeSceneEvidenceManager>();
+                int targetCount = (evMgr != null && evMgr.RegisteredCount > 0) ? evMgr.RegisteredCount : 8;
+
+                var summary = ResearchMetrics.ComputeSummary(session, records, timelineResult, targetCount);
 
                 string trackingPath = ExportTrackingData(session, records);
                 string summaryPath = ExportSummary(summary);
 
+                LastExportedSummary = summary;
+                LastTrackingCsvPath = trackingPath;
+                LastSummaryCsvPath = summaryPath;
+
                 Debug.Log($"[ResearchDataExporter] Successfully exported research datasets for session '{session.SessionId}':\n• Tracking: {trackingPath}\n• Summary: {summaryPath}");
+                OnDatasetsExported?.Invoke(summary, trackingPath, summaryPath);
             }
             catch (Exception ex)
             {
@@ -161,10 +209,17 @@ namespace CrimeSceneVR.Export
             sb.Append(summary.TimeToFirstDiscoverySeconds.HasValue ? summary.TimeToFirstDiscoverySeconds.Value.ToString("F2", Inv) : "").Append(',');
             sb.Append(summary.AverageDiscoveryIntervalSeconds.HasValue ? summary.AverageDiscoveryIntervalSeconds.Value.ToString("F2", Inv) : "").Append(',');
             sb.Append(summary.MeanSpatialErrorMeters.HasValue ? summary.MeanSpatialErrorMeters.Value.ToString("F4", Inv) : "").Append(',');
+            sb.Append(summary.MedianSpatialErrorMeters.HasValue ? summary.MedianSpatialErrorMeters.Value.ToString("F4", Inv) : "").Append(',');
+            sb.Append(summary.MinSpatialErrorMeters.HasValue ? summary.MinSpatialErrorMeters.Value.ToString("F4", Inv) : "").Append(',');
+            sb.Append(summary.MaxSpatialErrorMeters.HasValue ? summary.MaxSpatialErrorMeters.Value.ToString("F4", Inv) : "").Append(',');
             sb.Append(summary.SpatialWithinToleranceCount.ToString(Inv)).Append(',');
             sb.Append(summary.SpatialWithinTolerancePercent.ToString("F1", Inv)).Append(',');
+            sb.Append(summary.TotalMovementDistanceMeters.ToString("F2", Inv)).Append(',');
             sb.Append(summary.KendallTauScore.ToString("F3", Inv)).Append(',');
             sb.Append(summary.NormalizedSequencingScore.ToString("F3", Inv)).Append(',');
+            sb.Append(summary.ConcordantPairs.ToString(Inv)).Append(',');
+            sb.Append(summary.DiscordantPairs.ToString(Inv)).Append(',');
+            sb.Append(EscapeCsv(summary.TaggedTimelineSequence)).Append(',');
             sb.Append(EscapeCsv(summary.SequencingInterpretation));
             sb.AppendLine();
 

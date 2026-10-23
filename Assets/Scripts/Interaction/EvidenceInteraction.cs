@@ -19,7 +19,7 @@ public class EvidenceInteraction : MonoBehaviour
     [SerializeField] float sprintMultiplier = 2.2f;
     [SerializeField] float lookSensitivity = 0.12f;
 
-    readonly MaterialPropertyBlock propertyBlock = new MaterialPropertyBlock();
+    MaterialPropertyBlock propertyBlock;
     List<RaycastResult> uiRaycastResults = new List<RaycastResult>();
     PointerEventData uiPointerData;
     EvidenceObject selected;
@@ -264,6 +264,7 @@ public class EvidenceInteraction : MonoBehaviour
 
     void ApplyHighlight(EvidenceObject evidence)
     {
+        propertyBlock ??= new MaterialPropertyBlock();
         var renderers = evidence.GetComponentsInChildren<Renderer>();
         for (int i = 0; i < renderers.Length; i++)
         {
